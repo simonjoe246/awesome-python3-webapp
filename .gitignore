@@ -116,3 +116,5 @@ deploy_key_rsa
 tcl/
 Include/
 Scripts/
+test.py
+testing.py
