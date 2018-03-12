@@ -79,14 +79,13 @@ def has_named_kw_args(fn):
     verify the existence of default keyword arguments of fn
     :param fn:
     """
-    args = []
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             return True
 
 
-def has_var_kw_args(fn):
+def has_var_kw_arg(fn):
     '''
     verify the existence of the variable keyword arguments of fn
     :param fn:
@@ -98,7 +97,7 @@ def has_var_kw_args(fn):
             return True
 
 
-def has_request_args(fn):
+def has_request_arg(fn):
     '''
     KEYWORD_ONLY: 命名关键字参数
     VAR_POSITIONAL:可变参数
@@ -119,7 +118,7 @@ def has_request_args(fn):
                 and param.kind != inspect.Parameter.VAR_KEYWORD):
             raise ValueError('request parameter must be the last named parameterin function: %s%s' % (fn.__name__,
                                                                                                       str(sig)))
-        return found
+    return found
 
 
 class RequestHandler(object):
@@ -127,8 +126,8 @@ class RequestHandler(object):
     def __init__(self, app, fn):
         self._app = app
         self._func = fn
-        self._has_request_arg = has_request_args(fn)
-        self._has_var_kw_arg = has_var_kw_args(fn)
+        self._has_request_arg = has_request_arg(fn)
+        self._has_var_kw_arg = has_var_kw_arg(fn)
         self._has_named_kw_args = has_named_kw_args(fn)
         self._named_kw_args = get_named_kw_args(fn)
         self._required_kw_args = get_required_kw_args(fn)
