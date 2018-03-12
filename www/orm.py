@@ -6,7 +6,7 @@
 import aiomysql
 
 # 级别设置为INFO，表明
-import logging; logging.basicConfig(level=logging.INFO)
+import asyncio, logging
 
 
 def log(sql, args=()):
@@ -33,15 +33,14 @@ async def create_pool(loop, **kw):
 async def select(sql, args, size=None):
     log(sql, args)
     global __pool
-    with (await __pool) as conn:
-        cur = await conn.cursor(aiomysql.DictCursor)
-        await cur.execute(sql.replace('?', '%s'), args or ())
-        if size:
-            rs = await cur.fetmany(size)
-        else:
-            rs = await cur.fetchall()
-        await cur.close()
-        logging.INFO('rows returned %s' % len(rs))
+    async with __pool.get() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(sql.replace('?', '%s'), args or ())
+            if size:
+                rs = await cur.fetchmany(size)
+            else:
+                rs = await cur.fetchall()
+        logging.info('rows returned %s' % len(rs))
         return rs
 
 
@@ -71,6 +70,7 @@ def create_args_string(num):
 
 
 class Field(object):
+
     def __init__(self, name, column_type, primary_key, default):
         self.name = name
         self.column_type = column_type
@@ -125,7 +125,7 @@ class ModelMetaclass(type):
         logging.info('found model: %s (table: %s)' % (name, tableName))
         mappings = dict()
         fields = []
-        primarykey = None
+        primaryKey = None
         for k, v in attrs.items():
             # 将值是Field的子类的key和值存储到一个dict，再从类方法中删掉
             if isinstance(v, Field):
@@ -133,12 +133,12 @@ class ModelMetaclass(type):
                 mappings[k] = v
                 if v.primary_key:
                     # 找到主键
-                    if primarykey:
+                    if primaryKey:
                         raise BaseException('Duplicate primary key for field: %s' % k)
-                    primarykey = k
+                    primaryKey = k
                 else:
                     fields.append(k)  # 这时除主键外的属性名
-        if not primarykey:
+        if not primaryKey:
             raise BaseException('Primary key not found.')
         # 从类的方法中删除key，以免与实例的方法重复，出现错误
         for k in mappings.keys():
@@ -147,14 +147,14 @@ class ModelMetaclass(type):
         escaped_fields = list(map(lambda f: '`%s`' %f, fields))
         attrs['__mappings__'] = mappings
         attrs['__table__'] = tableName
-        attrs['__primary_key__'] = primarykey
+        attrs['__primary_key__'] = primaryKey
         attrs['__fields__'] = fields
-        attrs['__select__'] = 'select `%s`, %s from `%s`' % (primarykey, ','.join(escaped_fields), tableName)
+        attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ','.join(escaped_fields), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (
-        tableName, ', '.join(escaped_fields), primarykey, create_args_string(len(escaped_fields) + 1))
+        tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
         attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (tableName, ','.join(map(lambda f: '`%s=?`' % (
-            mappings.get(f).name or f), fields)), primarykey)
-        attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primarykey)
+            mappings.get(f).name or f), fields)), primaryKey)
+        attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
 
 
@@ -170,7 +170,7 @@ class Model(dict, metaclass=ModelMetaclass):
             raise AttributeError(r"'Model' object has not attribute '%s'" % key)
 
     # 可以为实例中不包含的key赋值
-    def __set__(self, key, value):
+    def __setattr__(self, key, value):
         self[key] = value
 
     def getValue(self, key):
@@ -178,7 +178,7 @@ class Model(dict, metaclass=ModelMetaclass):
 
     def getValueOrDefault(self, key):
         value = getattr(self, key, None)
-        if value == None:
+        if value is None:
             field = self.__mappings__[key]
             if field.default is not None:
                 value = field.default() if callable(field.default) else field.default
@@ -202,28 +202,29 @@ class Model(dict, metaclass=ModelMetaclass):
             sql.append(orderBy)
         limit = kw.get('limit', None)
         if limit is not None:
-            sql.append(limit)
+            sql.append('limit')
             if isinstance(limit, int):
                 sql.append('?')
                 args.append(limit)
-            elif isinstance(limit, tuple):
+            elif isinstance(limit, tuple) and len(limit) == 2:
                 sql.append('?, ?')
-                args.append(limit)
+                args.extend(limit)
             else:
                 raise ValueError('Invalid limit value: %s' %(str(limit)))
         rs = await select(' '.join(sql), args)
+        return [cls(**r) for r in rs]
 
     @classmethod
     async def findNumber(cls, selectField, where=None, args=None):
         # 找到符合where条件的指定size数量的对象的指定field
-        sql = ['select %s from `%s`' %(selectField, cls.__table__)]
+        sql = ['select %s _num_ from `%s`' %(selectField, cls.__table__)]
         if where:
             sql.append('where')
             sql.append(where)
         rs = await select(' '.join(sql), args, 1)
         if len(rs) == 0:
             return None
-        return cls(**rs[0]['__num__'])
+        return rs[0]['_num_']
 
     @classmethod
     async def find(cls, pk):
@@ -243,7 +244,7 @@ class Model(dict, metaclass=ModelMetaclass):
     async def update(self):
         args = list(map(self.getValue, self.__fields__))
         args.append(self.getValue(self.__primary_key__))
-        rows = await execute(self.__insert__, args)
+        rows = await execute(self.__update__, args)
         if rows != 1:
             logging.warning('failed to update by primary key: affected rows: %s' % rows)
 

@@ -13,11 +13,11 @@ from apis import APIError
 
 
 def get(path):
-    '''
+    """
     Define decorator @get('path')
     :param path:
     :return decorator:
-    '''
+    """
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kw):
@@ -29,11 +29,13 @@ def get(path):
 
 
 def post(path):
-    '''
+    """
     Define decorator @post('path')
     :param path:
     :return decorator:
-    '''
+    :param path:
+    :return:
+    """
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kw):
@@ -73,11 +75,10 @@ def get_named_kw_args(fn):
 
 
 def has_named_kw_args(fn):
-    '''
+    """
     verify the existence of default keyword arguments of fn
     :param fn:
-    :return:
-    '''
+    """
     args = []
     params = inspect.signature(fn).parameters
     for name, param in params.items():
@@ -91,7 +92,6 @@ def has_var_kw_args(fn):
     :param fn:
     :return:
     '''
-    args = []
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.VAR_KEYWORD:
@@ -112,7 +112,7 @@ def has_request_args(fn):
     params = sig.parameters
     found = False
     for name, param in params.items():
-        if 'request' in name:
+        if name == 'request':
             found = True
             continue
         if found and (param.kind != inspect.Parameter.VAR_POSITIONAL and param.kind != inspect.Parameter.KEYWORD_ONLY
@@ -122,10 +122,10 @@ def has_request_args(fn):
         return found
 
 
-class ResquestHandler(object):
+class RequestHandler(object):
 
     def __init__(self, app, fn):
-        self.app = app
+        self._app = app
         self._func = fn
         self._has_request_arg = has_request_args(fn)
         self._has_var_kw_arg = has_var_kw_args(fn)
@@ -135,7 +135,7 @@ class ResquestHandler(object):
 
     async def __call__(self, request):
         kw = None
-        if self._has_named_kw_args or self._has_request_arg or self._has_var_kw_arg:
+        if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             if request.method == 'POST':
                 if not request.content_type:
                     return web.HTTPBadRequest('Missing Content-Type')
@@ -190,7 +190,7 @@ class ResquestHandler(object):
 def add_static(app):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
-    logging.info('add static %s=>%s' % ('/static/', path))
+    logging.info('add static %s => %s' % ('/static/', path))
 
 
 def add_route(app, fn):
@@ -202,7 +202,7 @@ def add_route(app, fn):
         fn = asyncio.coroutine(fn)
     logging.info('add route %s %s => %s(%s)' % (
         method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
-    app.router.add_route(method, path, ResquestHandler(app, fn))
+    app.router.add_route(method, path, RequestHandler(app, fn))
 
 
 def add_routes(app, module_name):
