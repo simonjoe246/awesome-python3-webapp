@@ -96,6 +96,7 @@ async def response_factory(app, handler):
             resp = web.Response(body=r.encode('utf-8'))
             resp.content_type = 'text/html;charset=utf-8'
             return resp
+        # 如果返回的是创建的表对象的话
         if isinstance(r, dict):
             template = r.get('__template__')
             if template is None:
