@@ -217,7 +217,7 @@ def manage_create_blog():
 # get the page of modifying blog
 async def manage_edit_blog(*, id):
     return {
-        '__template__': 'manage_blog_edit_blog',
+        '__template__': 'manage_blog_edit.html',
         'id': '',
         'aciton': '/api/blogs'
     }
@@ -265,7 +265,7 @@ async def api_comments(*, page='1'):
     p = Page(num, page_index)
     if num == 0:
         return dict(page=p, comments=())
-    comments = Comment.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    comments = await Comment.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
     return dict(page=p, comments=comments)
 
 
@@ -355,7 +355,7 @@ async def api_register_users(*, email, name, passwd):
     sha1_passwd = '%s:%s' % (uid, passwd)
     user = User(id=uid, name=name.strip(), email=email, passwd=hashlib.sha1(sha1_passwd.encode('utf-8')).hexdigest(
 
-    ), image='http://www.gravater.com/avater/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
+    ), image='http://www.gravatar.com/avater/%s?d=mm&s=120' % hashlib.md5(email.encode('utf-8')).hexdigest())
     await user.save()
     # make session cookie
     r = web.Response()
